@@ -20,17 +20,14 @@ public class CSVStatsService {
         ArrayList<ArrayList<String>> output = new ArrayList<>();
         ArrayList<String> column_titles = new ArrayList();
         
-        System.out.println("\n\n\n\n" + data.size() + ":  is the number of columns, is that right?\n\n\n\n\n");
         // Iterate over each column
         for (int column = 0; column < data.get(0).size(); column++) {
-            System.out.println("inside the loop");
 
             // Try to parse all non-header rows as doubles
             ArrayList<Double> col = new ArrayList<>();
             boolean is_numeric = true;
 
             for (int row = 1; row < data.size(); row++) {
-                System.out.println("inside the second loop");
                 String cell = data.get(row).get(column).trim();
                 try {
                     col.add(Double.parseDouble(cell));
