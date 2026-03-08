@@ -1,6 +1,7 @@
 # QU Micro-services Cluster — CSC340 Project 1
+**Team Name:** Aunt Man
 
-**Team:** Aurelien Buisine, Reed Scampoli, Wilson Chen, Jacob Batson
+**Team Members:** Aurelien Buisine, Reed Scampoli, Wilson Chen, Jacob Batson
 
 ---
 
