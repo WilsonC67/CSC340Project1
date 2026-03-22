@@ -11,8 +11,7 @@ import javax.imageio.ImageIO;
 
 public class ImageToAsciiService {
 //#%=+-*. 42.5
-    private static final int VERTICAL_SCALAR = 48;
-    private static final int HORIZONTAL_SCALAR = 176;
+    private static final int ASCII_HEIGHT = 64;
 
     public static byte[] convert_to_ascii(byte[] bytes){
         BufferedImage image = btyes_to_bufferedImage(bytes);
@@ -64,11 +63,11 @@ public class ImageToAsciiService {
     }
       
     private static BufferedImage resize(BufferedImage image){
-        double vertical_scale = image.getHeight() / VERTICAL_SCALAR;
-        double horizontal_scale = image.getWidth() / HORIZONTAL_SCALAR;
+        double horizontal_scalar = ((double)(image.getHeight()) / ((double)ASCII_HEIGHT));
+        int width = (int)(((double)image.getWidth() / horizontal_scalar) * 1.95);
 
-        BufferedImage resizedImage = new BufferedImage((int)(image.getWidth()/horizontal_scale),
-                                                        (int)(image.getHeight()/vertical_scale),
+        BufferedImage resizedImage = new BufferedImage(width,
+                                                        ASCII_HEIGHT,
                                                         BufferedImage.TYPE_INT_RGB);
         Graphics2D g = resizedImage.createGraphics();
         g.drawImage(image, 0, 0, resizedImage.getWidth(), resizedImage.getHeight(), null);
