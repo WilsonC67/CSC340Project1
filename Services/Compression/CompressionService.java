@@ -1,47 +1,42 @@
 package Services.Compression;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
-import java.util.zip.ZipOutputStream;
+import java.io.*;
+import java.util.zip.*;
 
 public class CompressionService {
-    private static final int BUFFER_SIZE = 8192; // default size for buffering 8 kb
+    private static final int BUFFER_SIZE = 8192;
 
-    public byte[] compress(byte[] input, String entryName) throws IOException {
-        if(input == null){
-            throw new IllegalArgumentException("There has to be a input");
+    public void compress(InputStream input, OutputStream output, String entryName) throws IOException {
+        if (input == null || output == null) {
+            throw new IllegalArgumentException("Input and output streams must not be null");
         }
 
-        ByteArrayOutputStream output = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(output)) {
             zip.putNextEntry(new ZipEntry(entryName));
-            zip.write(input);
+            byte[] buffer = new byte[BUFFER_SIZE];
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                zip.write(buffer, 0, count);
+            }
             zip.closeEntry();
         }
-        return output.toByteArray();
     }
 
-    public byte[] decompress(byte[] compressedInput) throws IOException {
-        if(compressedInput == null){
-            throw new IllegalArgumentException("There has to be a input");
+    public void decompress(InputStream compressedInput, OutputStream output) throws IOException {
+        if (compressedInput == null || output == null) {
+            throw new IllegalArgumentException("Input and output streams must not be null");
         }
 
-        ByteArrayOutputStream output = new ByteArrayOutputStream();
-        byte[] buffer = new byte[BUFFER_SIZE];
-
-        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(compressedInput))) {
+        try (ZipInputStream zip = new ZipInputStream(compressedInput)) {
             ZipEntry entry = zip.getNextEntry();
             if (entry == null) {
                 throw new IOException("No entries found in ZIP data");
             }
+            byte[] buffer = new byte[BUFFER_SIZE];
             int count;
             while ((count = zip.read(buffer)) != -1) {
                 output.write(buffer, 0, count);
             }
         }
-        return output.toByteArray();
     }
 }
