@@ -3,6 +3,8 @@ package Services.Compression;
 import Source.Node;
 import Source.Service;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -84,28 +86,29 @@ public class CompressionNode extends Node {
             return error("Invalid Base64 input in \"data\" field: " + e.getMessage());
         }
 
-        final int MAX_BYTES = 30 * 1024 * 1024; // 30 MB
-        if (inputBytes.length > MAX_BYTES) {
-            return error("File exceeds the 30 MB maximum upload size.");
-        }
+        // Release large Strings before compression allocates its output buffer
+        data = null;
+        json = null;
 
         return switch (operation.trim().toLowerCase()) {
             case "compress" -> {
                 try {
-                    byte[] compressed = compressionService.compress(inputBytes, filename);
+                    ByteArrayOutputStream out = new ByteArrayOutputStream();
+                    compressionService.compress(new ByteArrayInputStream(inputBytes), out, filename);
                     String outName = filename + ".zip";
-                    yield success(ENCODER.encodeToString(compressed), outName);
+                    yield success(ENCODER.encodeToString(out.toByteArray()), outName);
                 } catch (IOException e) {
                     yield error("Compression failed: " + e.getMessage());
                 }
             }
             case "decompress" -> {
                 try {
-                    byte[] decompressed = compressionService.decompress(inputBytes);
+                    ByteArrayOutputStream out = new ByteArrayOutputStream();
+                    compressionService.decompress(new ByteArrayInputStream(inputBytes), out);
                     String outName = filename.endsWith(".zip")
                             ? filename.substring(0, filename.length() - 4)
                             : filename + ".decompressed";
-                    yield success(ENCODER.encodeToString(decompressed), outName);
+                    yield success(ENCODER.encodeToString(out.toByteArray()), outName);
                 } catch (IOException e) {
                     yield error("Decompression failed: " + e.getMessage());
                 }
