@@ -179,17 +179,30 @@ public class Pipe implements Runnable {
             OutputStream nodeOut = nodeSocket.getOutputStream();
             InputStream  nodeIn  = nodeSocket.getInputStream();
 
-            // Write the already-buffered header, then stream the rest directly.
-            nodeOut.write(header);
-            clientIn.transferTo(nodeOut);
-            nodeSocket.shutdownOutput(); // signal EOF to SN
+            // Send request on a background thread so we can simultaneously read the
+            // response. Without this, a streaming node (e.g. CompressionNode) that
+            // writes output while reading input causes a bidirectional TCP deadlock
+            // once the kernel socket buffers (~200 KB) fill up.
+            Thread sender = new Thread(() -> {
+                try {
+                    nodeOut.write(header);
+                    clientIn.transferTo(nodeOut);
+                    nodeSocket.shutdownOutput(); // signal EOF to SN
+                } catch (IOException ignored) {}
+            }, "NodeSender-" + clientId);
+            sender.setDaemon(true);
+            sender.start();
 
-            // Stream response back without buffering.
+            // Stream response back while the sender is still running.
             long bytes = nodeIn.transferTo(clientOut);
             clientOut.flush();
 
             System.out.printf("[Pipe-%d] Forwarded %d result bytes back to client.%n",
                     clientId, bytes);
+
+            try { sender.join(5_000); } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
 
