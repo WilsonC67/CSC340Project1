@@ -38,8 +38,16 @@ java {
 }
 
 application {
-    // Define the class for the application.
-    mainClass = "Source.Main"
+    mainClass = "Source.Server"
+}
+
+tasks.jar {
+    archiveFileName = "MicroService.jar"
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes["Main-Class"] = "Source.Server"
+    }
+    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
 }
 
 tasks.named<Test>("test") {
