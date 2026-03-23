@@ -221,15 +221,13 @@ public abstract class Node implements Runnable {
             OutputStream out = ps.getOutputStream();
             try {
                 handleRequestStreaming(ps.getInputStream(), out);
-                out.flush();
             } catch (Throwable e) {
-                System.err.printf("[%s] dispatchRequest error: %s%n", getService(), e.getMessage());
-                String msg = e.getMessage() != null ? e.getMessage().replace("\"", "'") : e.getClass().getSimpleName();
-                try {
-                    out.write(("{\"status\":\"error\",\"message\":\"" + msg + "\"}").getBytes());
-                    out.flush();
-                } catch (IOException ignored) {}
+                // handleRequestStreaming is responsible for its own error responses.
+                // If it throws here, the connection is in an unknown state — just log and close.
+                System.err.printf("[%s] dispatchRequest unhandled error: %s%n",
+                        getService(), e.getMessage());
             }
+            try { out.flush(); } catch (IOException ignored) {}
         } catch (Exception e) {
             System.err.printf("[%s] dispatchRequest error: %s%n", getService(), e.getMessage());
         }
@@ -237,6 +235,7 @@ public abstract class Node implements Runnable {
 
     /**
      * Default streaming handler — buffers the full payload then delegates to handleRequest().
+     * Handles all errors internally and always writes a complete, valid JSON response.
      * Subclasses may override this to process the streams directly without buffering.
      */
     protected void handleRequestStreaming(InputStream in, OutputStream out) throws Exception {
@@ -248,7 +247,14 @@ public abstract class Node implements Runnable {
             return;
         }
 
-        byte[] result = handleRequest(payload);
+        byte[] result;
+        try {
+            result = handleRequest(payload);
+        } catch (Throwable e) {
+            System.err.printf("[%s] handleRequest error: %s%n", getService(), e.getMessage());
+            String msg = e.getMessage() != null ? e.getMessage().replace("\"", "'") : e.getClass().getSimpleName();
+            result = ("{\"status\":\"error\",\"message\":\"" + msg + "\"}").getBytes();
+        }
         out.write(result);
         System.out.printf("[%s] Sent result (%d bytes)%n", getService(), result.length);
     }
