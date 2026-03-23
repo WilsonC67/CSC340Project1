@@ -30,18 +30,18 @@ public class CSVStatsService {
         ArrayList<String> column_titles = new ArrayList();
         
 
-        double[] col = new double[data.size()];
+        double[] col = new double[data.size() - 1]; // exclude header row
+
         // Iterate over each column
         for (int column = 0; column < data.get(0).size(); column++) {
-
-            // Try to parse all non-header rows as doubles
+        
             boolean is_numeric = true;
-
             int parsed_count = 0;
+        
             for (int row = 1; row < data.size(); row++) {
                 String cell = data.get(row).get(column).trim();
                 try {
-                    col[row - 1] = Double.parseDouble(cell);  
+                    col[row - 1] = Double.parseDouble(cell);
                     parsed_count++;
                 } catch (NumberFormatException e) {
                     is_numeric = false;
@@ -49,23 +49,23 @@ public class CSVStatsService {
                 }
             }
             if (!is_numeric || parsed_count == 0) continue;
-
-            // Sort a copy for median (doesn't affect mode/other calcs, but it wont effect them)
-            Arrays.sort(col);
+        
+            double[] filled = Arrays.copyOf(col, parsed_count);
+            Arrays.sort(filled);
             column_titles.add(data.get(0).get(column));
-
-            // Build the result column (label, mean, median, mode, std, min, max)
+        
             ArrayList<String> stat_column = new ArrayList<>();
-            stat_column.add(String.valueOf(StatUtils.mean(col)));
-            stat_column.add(String.valueOf(col.length % 2 == 1 ? col[col.length/2] : (col[col.length/2 - 1]  + col[col.length/2]) / 2.0));
-            stat_column.add(String.valueOf(StatUtils.mode(col)[0]));
-            stat_column.add(String.valueOf(Math.sqrt(StatUtils.variance(col))));
-            stat_column.add(String.valueOf(StatUtils.min(col)));
-            stat_column.add(String.valueOf(StatUtils.max(col)));
+            stat_column.add(String.valueOf(StatUtils.mean(filled)));
+            stat_column.add(String.valueOf(filled.length % 2 == 1 
+                ? filled[filled.length/2] 
+                : (filled[filled.length/2 - 1] + filled[filled.length/2]) / 2.0));
+            stat_column.add(String.valueOf(StatUtils.mode(filled)[0]));
+            stat_column.add(String.valueOf(Math.sqrt(StatUtils.variance(filled))));
+            stat_column.add(String.valueOf(StatUtils.min(filled)));
+            stat_column.add(String.valueOf(StatUtils.max(filled)));
             
-
             results.add(stat_column);
-            col = new double[data.size()];
+            col = new double[data.size() - 1]; // reset for next column
         }
 
         
