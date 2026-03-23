@@ -50,10 +50,7 @@
         // Update label text when a file is chosen
         fileInput.addEventListener('change', () => {
             const file = fileInput.files[0];
-            const name = file ? file.name : null;
-            uploadLabel.innerHTML = name
-                ? name
-                : 'Click or Drag <br> to Upload File';
+            uploadLabel.innerHTML = file ? file.name : 'Click or Drag <br> to Upload File';
             resultDiv.innerHTML = '';
             statusDiv.textContent = '';
         });
@@ -63,11 +60,9 @@
             e.preventDefault();
             uploadLabel.classList.add('drag-over');
         });
-
         uploadLabel.addEventListener('dragleave', () => {
             uploadLabel.classList.remove('drag-over');
         });
-
         uploadLabel.addEventListener('drop', (e) => {
             e.preventDefault();
             uploadLabel.classList.remove('drag-over');

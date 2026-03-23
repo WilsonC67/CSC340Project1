@@ -136,6 +136,9 @@ public class HTTPGateway implements Runnable {
             return;
         }
 
+        System.out.printf("[HTTPGateway/stream] %s %s%n",
+                ex.getRequestMethod(), ex.getRequestURI());
+
         try (Socket socket = new Socket(DOORMAN_HOST, DOORMAN_PORT)) {
             InputStream  tcpIn  = socket.getInputStream();
             OutputStream tcpOut = socket.getOutputStream();
@@ -149,6 +152,7 @@ public class HTTPGateway implements Runnable {
 
             // Step 3: read the one-line JSON response header from the node
             String responseHeader = readLine(tcpIn);
+            System.out.printf("[HTTPGateway/stream] Node response header: %s%n", responseHeader);
             String status   = extractJsonField(responseHeader, "status");
             String filename = extractJsonField(responseHeader, "filename");
             String message  = extractJsonField(responseHeader, "message");

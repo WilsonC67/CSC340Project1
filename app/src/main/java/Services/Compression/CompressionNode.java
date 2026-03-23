@@ -1,5 +1,7 @@
 package Services.Compression;
 
+import java.io.FilterInputStream;
+import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -34,6 +36,9 @@ import Source.Service;
 public class CompressionNode extends Node {
 
     private static final int NODE_ID = 3;
+
+    /** Log a progress update every this many bytes read/written. */
+    private static final long LOG_INTERVAL_BYTES = 10 * 1024 * 1024; // 10 MB
 
     // -----------------------------------------------------------------------
     // Node identity
@@ -97,11 +102,15 @@ public class CompressionNode extends Node {
         String outName = filename + ".zip";
         rawOut.write((responseOk(outName) + "\n").getBytes(StandardCharsets.UTF_8));
         rawOut.flush();
+        long startMs = System.currentTimeMillis();
+        CountingInputStream in = new CountingInputStream(rawIn, "read", LOG_INTERVAL_BYTES);
         try (ZipOutputStream zip = new ZipOutputStream(rawOut)) {
             zip.putNextEntry(new ZipEntry(filename));
-            rawIn.transferTo(zip);
+            in.transferTo(zip);
             zip.closeEntry();
         } // zip.close() → Deflater.end() (releases native memory) + closes rawOut (signals EOF to Pipe)
+        System.out.printf("[CompressionNode] Compress done — in: %s, time: %.2fs%n",
+                formatBytes(in.total()), (System.currentTimeMillis() - startMs) / 1000.0);
     }
 
     /**
@@ -115,12 +124,100 @@ public class CompressionNode extends Node {
                 : filename + ".decompressed";
         rawOut.write((responseOk(outName) + "\n").getBytes(StandardCharsets.UTF_8));
         rawOut.flush();
+        long startMs = System.currentTimeMillis();
+        CountingOutputStream out = new CountingOutputStream(rawOut, "wrote", LOG_INTERVAL_BYTES);
         try (ZipInputStream zip = new ZipInputStream(rawIn)) {
             while (zip.getNextEntry() != null) {
-                zip.transferTo(rawOut);
+                zip.transferTo(out);
                 zip.closeEntry();
             }
         }
+        System.out.printf("[CompressionNode] Decompress done — out: %s, time: %.2fs%n",
+                formatBytes(out.total()), (System.currentTimeMillis() - startMs) / 1000.0);
+    }
+
+    // -----------------------------------------------------------------------
+    // Progress-tracking stream wrappers
+    // -----------------------------------------------------------------------
+
+    /** Wraps an InputStream and logs every {@code intervalBytes} bytes read. */
+    private static final class CountingInputStream extends FilterInputStream {
+        private final String tag;
+        private final long   interval;
+        private long total;
+        private long nextLog;
+
+        CountingInputStream(InputStream in, String tag, long interval) {
+            super(in);
+            this.tag      = tag;
+            this.interval = interval;
+            this.nextLog  = interval;
+        }
+
+        @Override
+        public int read(byte[] buf, int off, int len) throws IOException {
+            int n = super.read(buf, off, len);
+            if (n > 0) {
+                total += n;
+                while (total >= nextLog) {
+                    System.out.printf("[CompressionNode] %s %s…%n", tag, formatBytes(nextLog));
+                    nextLog += interval;
+                }
+            }
+            return n;
+        }
+
+        @Override
+        public int read() throws IOException {
+            int b = super.read();
+            if (b != -1) {
+                total++;
+                if (total >= nextLog) {
+                    System.out.printf("[CompressionNode] %s %s…%n", tag, formatBytes(nextLog));
+                    nextLog += interval;
+                }
+            }
+            return b;
+        }
+
+        long total() { return total; }
+    }
+
+    /** Wraps an OutputStream and logs every {@code intervalBytes} bytes written. */
+    private static final class CountingOutputStream extends FilterOutputStream {
+        private final String tag;
+        private final long   interval;
+        private long total;
+        private long nextLog;
+
+        CountingOutputStream(OutputStream out, String tag, long interval) {
+            super(out);
+            this.tag      = tag;
+            this.interval = interval;
+            this.nextLog  = interval;
+        }
+
+        @Override
+        public void write(byte[] buf, int off, int len) throws IOException {
+            out.write(buf, off, len);
+            total += len;
+            while (total >= nextLog) {
+                System.out.printf("[CompressionNode] %s %s…%n", tag, formatBytes(nextLog));
+                nextLog += interval;
+            }
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            out.write(b);
+            total++;
+            if (total >= nextLog) {
+                System.out.printf("[CompressionNode] %s %s…%n", tag, formatBytes(nextLog));
+                nextLog += interval;
+            }
+        }
+
+        long total() { return total; }
     }
 
     // -----------------------------------------------------------------------
@@ -154,6 +251,12 @@ public class CompressionNode extends Node {
 
     private static String escapeJson(String s) {
         return s.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    private static String formatBytes(long n) {
+        if (n < 1024)              return n + " B";
+        if (n < 1024 * 1024)       return String.format("%.1f KB", n / 1024.0);
+        return String.format("%.2f MB", n / (1024.0 * 1024));
     }
 
     // -----------------------------------------------------------------------

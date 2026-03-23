@@ -34,14 +34,12 @@ public class ImageToAsciiService {
 
     private static BufferedImage btyes_to_bufferedImage(byte[] bytes){
         String base64Data = new String(bytes, StandardCharsets.US_ASCII);
-        System.out.println("[IMAGE_TO_ASCII] base64 length=" + base64Data.length() + " first10=" + base64Data.substring(0, Math.min(10, base64Data.length())));
-        
         byte[] imageBytes = Base64.getDecoder().decode(bytes);
 
         try (ByteArrayInputStream bis = new ByteArrayInputStream(imageBytes)){
             return ImageIO.read(bis);
         } catch (Exception e) {
-            System.out.println(e);
+            System.err.printf("[ImageToAscii] Failed to decode image: %s%n", e.getMessage());
             return null;
         }
     }
