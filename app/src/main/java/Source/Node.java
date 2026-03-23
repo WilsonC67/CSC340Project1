@@ -211,39 +211,46 @@ public abstract class Node implements Runnable {
     // -----------------------------------------------------------------------
 
     /**
-     * Handles one Pipe connection end-to-end:
-     *   a) Read full JSON payload (Pipe calls shutdownOutput, so readAllBytes terminates).
-     *   b) Delegate to handleRequest(payload) — Pattern A or B depending on subclass.
-     *   c) Write result bytes back to Pipe.
+     * Handles one Pipe connection end-to-end by delegating to handleRequestStreaming().
+     * Pattern A nodes use the default (buffered) implementation.
+     * Pattern A-streaming nodes (e.g. CompressionNode) override handleRequestStreaming()
+     * to avoid buffering the full payload.
      */
     private void dispatchRequest(Socket pipeSocket) {
         try (Socket ps = pipeSocket) {
-            byte[] payload = ps.getInputStream().readAllBytes();
-            System.out.printf("[%s] Received payload (%d bytes)%n", getService(), payload.length);
-
-            if (payload.length == 0) {
-                ps.getOutputStream().write(
-                    "{\"status\":\"error\",\"message\":\"Empty payload\"}".getBytes());
-                ps.getOutputStream().flush();
-                return;
-            }
-
-            byte[] result;
+            OutputStream out = ps.getOutputStream();
             try {
-                result = handleRequest(payload);
+                handleRequestStreaming(ps.getInputStream(), out);
+                out.flush();
             } catch (Throwable e) {
                 System.err.printf("[%s] dispatchRequest error: %s%n", getService(), e.getMessage());
                 String msg = e.getMessage() != null ? e.getMessage().replace("\"", "'") : e.getClass().getSimpleName();
-                result = ("{\"status\":\"error\",\"message\":\"" + msg + "\"}").getBytes();
+                try {
+                    out.write(("{\"status\":\"error\",\"message\":\"" + msg + "\"}").getBytes());
+                    out.flush();
+                } catch (IOException ignored) {}
             }
-
-            ps.getOutputStream().write(result);
-            ps.getOutputStream().flush();
-            System.out.printf("[%s] Sent result (%d bytes)%n", getService(), result.length);
-
         } catch (Exception e) {
             System.err.printf("[%s] dispatchRequest error: %s%n", getService(), e.getMessage());
         }
+    }
+
+    /**
+     * Default streaming handler — buffers the full payload then delegates to handleRequest().
+     * Subclasses may override this to process the streams directly without buffering.
+     */
+    protected void handleRequestStreaming(InputStream in, OutputStream out) throws Exception {
+        byte[] payload = in.readAllBytes();
+        System.out.printf("[%s] Received payload (%d bytes)%n", getService(), payload.length);
+
+        if (payload.length == 0) {
+            out.write("{\"status\":\"error\",\"message\":\"Empty payload\"}".getBytes());
+            return;
+        }
+
+        byte[] result = handleRequest(payload);
+        out.write(result);
+        System.out.printf("[%s] Sent result (%d bytes)%n", getService(), result.length);
     }
 
     // -----------------------------------------------------------------------
