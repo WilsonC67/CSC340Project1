@@ -205,12 +205,13 @@ public class CompressionNode extends Node {
             throws IOException {
         rawOut.write("{\"status\":\"ok\",\"result\":\"".getBytes(StandardCharsets.UTF_8));
         OutputStream b64Out = Base64.getEncoder().wrap(new NonClosingOutputStream(rawOut));
-        try (ZipOutputStream zip = new ZipOutputStream(b64Out)) {
-            zip.putNextEntry(new ZipEntry(filename));
-            decoded.transferTo(zip);
-            zip.closeEntry();
-        }
-        b64Out.close(); // flushes base64 padding without closing rawOut
+        // Use finish() instead of close() so ZipOutputStream does not close b64Out
+        ZipOutputStream zip = new ZipOutputStream(b64Out);
+        zip.putNextEntry(new ZipEntry(filename));
+        decoded.transferTo(zip);
+        zip.closeEntry();
+        zip.finish(); // writes ZIP end-of-central-directory without closing b64Out
+        b64Out.close(); // flushes base64 padding; NonClosingOutputStream keeps rawOut open
         rawOut.write(("\",\"filename\":\"" + escapeJson(filename + ".zip") + "\"}")
                 .getBytes(StandardCharsets.UTF_8));
     }
@@ -222,13 +223,12 @@ public class CompressionNode extends Node {
                 : filename + ".decompressed";
         rawOut.write("{\"status\":\"ok\",\"result\":\"".getBytes(StandardCharsets.UTF_8));
         OutputStream b64Out = Base64.getEncoder().wrap(new NonClosingOutputStream(rawOut));
-        try (ZipInputStream zip = new ZipInputStream(decoded)) {
-            while (zip.getNextEntry() != null) {
-                zip.transferTo(b64Out);
-                zip.closeEntry();
-            }
+        ZipInputStream zip = new ZipInputStream(decoded);
+        while (zip.getNextEntry() != null) {
+            zip.transferTo(b64Out);
+            zip.closeEntry();
         }
-        b64Out.close();
+        b64Out.close(); // flushes base64 padding; NonClosingOutputStream keeps rawOut open
         rawOut.write(("\",\"filename\":\"" + escapeJson(outName) + "\"}")
                 .getBytes(StandardCharsets.UTF_8));
     }
