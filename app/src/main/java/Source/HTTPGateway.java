@@ -51,6 +51,7 @@ public class HTTPGateway implements Runnable {
                     new InetSocketAddress(HTTP_PORT), /* backlog */ 32);
             server.createContext("/ping",         this::handlePing);
             server.createContext("/api/service",  this::handleService);
+            server.createContext("/api/stream",   this::handleStream);
             server.createContext("/api/status",   this::handleStatus);
             server.createContext("/",             this::handleStatic);
             server.setExecutor(Executors.newCachedThreadPool());
@@ -105,6 +106,96 @@ public class HTTPGateway implements Runnable {
         } catch (IOException e) {
             sendError(ex, "Could not reach DoormanListener: " + e.getMessage());
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // POST /api/stream — raw binary protocol for compression service
+    // -----------------------------------------------------------------------
+
+    /**
+     * Raw binary streaming endpoint used by the compression service.
+     *
+     * Request body (from CompDecomp.html):
+     *   {"service":3,"operation":"compress"|"decompress","filename":"<name>"}\n
+     *   <raw binary file bytes>
+     *
+     * Response from node:
+     *   {"status":"ok","filename":"<output>"}\n<raw binary result bytes>
+     *     — or —
+     *   {"status":"error","message":"<details>"}\n
+     *
+     * This gateway reads the one-line JSON response header from the node,
+     * sets Content-Disposition, then streams the remaining raw bytes as the
+     * HTTP response body — no base64 anywhere.
+     */
+    private void handleStream(HttpExchange ex) throws IOException {
+        addCors(ex);
+
+        if ("OPTIONS".equalsIgnoreCase(ex.getRequestMethod())) {
+            ex.sendResponseHeaders(204, -1);
+            return;
+        }
+
+        try (Socket socket = new Socket(DOORMAN_HOST, DOORMAN_PORT)) {
+            InputStream  tcpIn  = socket.getInputStream();
+            OutputStream tcpOut = socket.getOutputStream();
+
+            // Step 1: consume AVAILABLE_SERVICES line Pipe sends on connect
+            readLine(tcpIn);
+
+            // Step 2: stream HTTP request body → TCP (JSON header line + raw binary)
+            ex.getRequestBody().transferTo(tcpOut);
+            socket.shutdownOutput();
+
+            // Step 3: read the one-line JSON response header from the node
+            String responseHeader = readLine(tcpIn);
+            String status   = extractJsonField(responseHeader, "status");
+            String filename = extractJsonField(responseHeader, "filename");
+            String message  = extractJsonField(responseHeader, "message");
+
+            if (!"ok".equals(status)) {
+                String esc  = (message != null ? message : "Unknown error")
+                        .replace("\\", "\\\\").replace("\"", "\\\"");
+                byte[] body = ("{\"status\":\"error\",\"message\":\"" + esc + "\"}")
+                        .getBytes(StandardCharsets.UTF_8);
+                ex.getResponseHeaders().set("Content-Type", "application/json");
+                ex.sendResponseHeaders(500, body.length);
+                try (OutputStream os = ex.getResponseBody()) { os.write(body); }
+                return;
+            }
+
+            // Step 4: stream raw binary result bytes back to the browser
+            String safeFilename = (filename != null && !filename.isBlank())
+                    ? filename.replaceAll("[^\\w. _()\\[\\]-]", "_")
+                    : "output";
+            ex.getResponseHeaders().set("Content-Type", "application/octet-stream");
+            ex.getResponseHeaders().set("Content-Disposition",
+                    "attachment; filename=\"" + safeFilename + "\"");
+            ex.sendResponseHeaders(200, 0); // 0 = chunked / unknown length
+            try (OutputStream os = ex.getResponseBody()) { tcpIn.transferTo(os); }
+
+        } catch (IOException e) {
+            sendError(ex, "Could not reach DoormanListener: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Extracts the string value of a JSON field using a simple char scanner.
+     * Handles basic backslash escapes. Returns null if the field is not found.
+     */
+    private static String extractJsonField(String json, String key) {
+        String needle = "\"" + key + "\":\"";
+        int pos = json.indexOf(needle);
+        if (pos < 0) return null;
+        pos += needle.length();
+        StringBuilder sb = new StringBuilder();
+        while (pos < json.length()) {
+            char c = json.charAt(pos++);
+            if (c == '"') break;
+            if (c == '\\' && pos < json.length()) c = json.charAt(pos++);
+            sb.append(c);
+        }
+        return sb.toString();
     }
 
     // -----------------------------------------------------------------------
