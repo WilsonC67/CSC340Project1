@@ -5,7 +5,6 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.concurrent.Executors;
 
 /**
@@ -39,13 +38,7 @@ public class HTTPGateway implements Runnable {
     private static final String DOORMAN_HOST  = "127.0.0.1";
     private static final int    DOORMAN_PORT  = DoormanListener.TCP_PORT;
 
-    /**
-     * Root directory for static frontend files.
-     * Default works when the server is launched from the project root.
-     * Override on AWS: -Dfrontend.dir=/home/ec2-user/Frontend
-     */
-    private static final String FRONTEND_DIR =
-            System.getProperty("frontend.dir", "Frontend");
+    private static final String FRONTEND_RESOURCE_ROOT = "Frontend";
 
     // -----------------------------------------------------------------------
     // Runnable entry point
@@ -63,8 +56,7 @@ public class HTTPGateway implements Runnable {
             server.setExecutor(Executors.newCachedThreadPool());
             server.start();
             System.out.printf("[HTTPGateway] HTTP server listening on port %d%n", HTTP_PORT);
-            System.out.printf("[HTTPGateway] Serving frontend from: %s%n",
-                    new File(FRONTEND_DIR).getCanonicalPath());
+            System.out.printf("[HTTPGateway] Serving frontend from classpath: %s%n", FRONTEND_RESOURCE_ROOT);
         } catch (IOException e) {
             System.err.printf("[HTTPGateway] Failed to start: %s%n", e.getMessage());
         }
@@ -183,12 +175,10 @@ public class HTTPGateway implements Runnable {
     // -----------------------------------------------------------------------
 
     /**
-     * Serves static files from FRONTEND_DIR.
+     * Serves static files bundled in the jar under Frontend/.
      *   /                        → Frontend/src/index.html
      *   /src/Gravitational.html  → Frontend/src/Gravitational.html
      *   /Resources/images/x.png  → Frontend/Resources/images/x.png
-     *
-     * Path traversal is blocked by canonical-path check.
      */
     private void handleStatic(HttpExchange ex) throws IOException {
         String uriPath = ex.getRequestURI().getPath();
@@ -199,22 +189,21 @@ public class HTTPGateway implements Runnable {
             uriPath = "/src" + uriPath;
         }
 
-        File root = new File(FRONTEND_DIR).getCanonicalFile();
-        File file = new File(root, uriPath).getCanonicalFile();
-
-        // Security: block any path that escapes the frontend root
-        if (!file.getPath().startsWith(root.getPath())) {
+        // Block path traversal attempts
+        if (uriPath.contains("..")) {
             send404(ex); return;
         }
 
-        if (!file.exists() || !file.isFile()) {
-            send404(ex); return;
+        String resourcePath = FRONTEND_RESOURCE_ROOT + uriPath;
+        try (InputStream is = HTTPGateway.class.getClassLoader().getResourceAsStream(resourcePath)) {
+            if (is == null) {
+                send404(ex); return;
+            }
+            byte[] body = is.readAllBytes();
+            ex.getResponseHeaders().set("Content-Type", mimeType(resourcePath));
+            ex.sendResponseHeaders(200, body.length);
+            try (OutputStream os = ex.getResponseBody()) { os.write(body); }
         }
-
-        byte[] body = Files.readAllBytes(file.toPath());
-        ex.getResponseHeaders().set("Content-Type", mimeType(file.getName()));
-        ex.sendResponseHeaders(200, body.length);
-        try (OutputStream os = ex.getResponseBody()) { os.write(body); }
     }
 
     private static String mimeType(String name) {
