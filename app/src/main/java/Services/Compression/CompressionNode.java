@@ -94,7 +94,7 @@ public class CompressionNode extends Node {
             case "compress" -> {
                 try {
                     ByteArrayOutputStream out = new ByteArrayOutputStream();
-                    compressionService.compress(new ByteArrayInputStream(inputBytes), out, filename);
+                    compressionService.compressChunked(new ByteArrayInputStream(inputBytes), out, filename);
                     String outName = filename + ".zip";
                     yield success(ENCODER.encodeToString(out.toByteArray()), outName);
                 } catch (IOException e) {
@@ -104,7 +104,7 @@ public class CompressionNode extends Node {
             case "decompress" -> {
                 try {
                     ByteArrayOutputStream out = new ByteArrayOutputStream();
-                    compressionService.decompress(new ByteArrayInputStream(inputBytes), out);
+                    compressionService.decompressChunked(new ByteArrayInputStream(inputBytes), out);
                     String outName = filename.endsWith(".zip")
                             ? filename.substring(0, filename.length() - 4)
                             : filename + ".decompressed";
