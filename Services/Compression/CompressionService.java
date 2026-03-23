@@ -5,6 +5,7 @@ import java.util.zip.*;
 
 public class CompressionService {
     private static final int BUFFER_SIZE = 8192;
+    private static final int CHUNK_SIZE  = 64 * 1024; // 64 KB per chunk / ZIP entry
 
     public void compress(InputStream input, OutputStream output, String entryName) throws IOException {
         if (input == null || output == null) {
@@ -12,13 +13,19 @@ public class CompressionService {
         }
 
         try (ZipOutputStream zip = new ZipOutputStream(output)) {
-            zip.putNextEntry(new ZipEntry(entryName));
-            byte[] buffer = new byte[BUFFER_SIZE];
-            int count;
-            while ((count = input.read(buffer)) != -1) {
-                zip.write(buffer, 0, count);
+            byte[] chunk = new byte[CHUNK_SIZE];
+            int chunkIndex = 0;
+            int totalRead;
+            while ((totalRead = readFully(input, chunk)) > 0) {
+                zip.putNextEntry(new ZipEntry(entryName + ".part" + chunkIndex++));
+                zip.write(chunk, 0, totalRead);
+                zip.closeEntry();
             }
-            zip.closeEntry();
+            // Preserve a valid ZIP for empty input
+            if (chunkIndex == 0) {
+                zip.putNextEntry(new ZipEntry(entryName + ".part0"));
+                zip.closeEntry();
+            }
         }
     }
 
@@ -28,15 +35,29 @@ public class CompressionService {
         }
 
         try (ZipInputStream zip = new ZipInputStream(compressedInput)) {
-            ZipEntry entry = zip.getNextEntry();
-            if (entry == null) {
-                throw new IOException("No entries found in ZIP data");
-            }
             byte[] buffer = new byte[BUFFER_SIZE];
             int count;
-            while ((count = zip.read(buffer)) != -1) {
-                output.write(buffer, 0, count);
+            boolean hasEntry = false;
+            while (zip.getNextEntry() != null) {
+                hasEntry = true;
+                while ((count = zip.read(buffer)) != -1) {
+                    output.write(buffer, 0, count);
+                }
+            }
+            if (!hasEntry) {
+                throw new IOException("No entries found in ZIP data");
             }
         }
+    }
+
+    /** Reads up to buf.length bytes, filling the buffer as much as the stream allows. */
+    private static int readFully(InputStream in, byte[] buf) throws IOException {
+        int total = 0;
+        while (total < buf.length) {
+            int n = in.read(buf, total, buf.length - total);
+            if (n == -1) break;
+            total += n;
+        }
+        return total;
     }
 }

@@ -2,10 +2,10 @@ package Services.Compression;
 
 import Source.Node;
 import Source.Service;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.regex.Matcher;
@@ -79,22 +79,14 @@ public class CompressionNode extends Node {
             filename = "file";
         }
 
-        byte[] inputBytes;
-        try {
-            inputBytes = DECODER.decode(data);
-        } catch (IllegalArgumentException e) {
-            return error("Invalid Base64 input in \"data\" field: " + e.getMessage());
-        }
-
-        // Release large Strings before compression allocates its output buffer
-        data = null;
-        json = null;
+        InputStream inputStream = DECODER.wrap(
+                new ByteArrayInputStream(data.getBytes(StandardCharsets.ISO_8859_1)));
 
         return switch (operation.trim().toLowerCase()) {
             case "compress" -> {
                 try {
                     ByteArrayOutputStream out = new ByteArrayOutputStream();
-                    compressionService.compress(new ByteArrayInputStream(inputBytes), out, filename);
+                    compressionService.compress(inputStream, out, filename);
                     String outName = filename + ".zip";
                     yield success(ENCODER.encodeToString(out.toByteArray()), outName);
                 } catch (IOException e) {
@@ -104,7 +96,7 @@ public class CompressionNode extends Node {
             case "decompress" -> {
                 try {
                     ByteArrayOutputStream out = new ByteArrayOutputStream();
-                    compressionService.decompress(new ByteArrayInputStream(inputBytes), out);
+                    compressionService.decompress(inputStream, out);
                     String outName = filename.endsWith(".zip")
                             ? filename.substring(0, filename.length() - 4)
                             : filename + ".decompressed";
