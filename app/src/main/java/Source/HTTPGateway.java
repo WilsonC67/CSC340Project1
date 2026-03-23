@@ -146,9 +146,19 @@ public class HTTPGateway implements Runnable {
             // Step 1: consume AVAILABLE_SERVICES line Pipe sends on connect
             readLine(tcpIn);
 
-            // Step 2: stream HTTP request body → TCP (JSON header line + raw binary)
-            ex.getRequestBody().transferTo(tcpOut);
-            socket.shutdownOutput();
+            // Step 2: send request body in a background thread so we can simultaneously
+            // read the response. Without this, a streaming node that writes output while
+            // reading input causes a bidirectional TCP deadlock once the kernel socket
+            // buffers fill up — identical to the same fix applied in Pipe.forwardToNode.
+            InputStream httpBody = ex.getRequestBody();
+            Thread sender = new Thread(() -> {
+                try {
+                    httpBody.transferTo(tcpOut);
+                    socket.shutdownOutput();
+                } catch (IOException ignored) {}
+            }, "HTTPStreamSender");
+            sender.setDaemon(true);
+            sender.start();
 
             // Step 3: read the one-line JSON response header from the node
             String responseHeader = readLine(tcpIn);
@@ -177,6 +187,10 @@ public class HTTPGateway implements Runnable {
                     "attachment; filename=\"" + safeFilename + "\"");
             ex.sendResponseHeaders(200, 0); // 0 = chunked / unknown length
             try (OutputStream os = ex.getResponseBody()) { tcpIn.transferTo(os); }
+
+            try { sender.join(30_000); } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
 
         } catch (IOException e) {
             sendError(ex, "Could not reach DoormanListener: " + e.getMessage());
