@@ -39,29 +39,22 @@ Browser ──HTTP──▶ HTTPGateway ──TCP──▶ DoormanListener ─�
 ## Running Locally
 
 ### Prerequisites
-- Java 17+
+- Java 21+
 - All commands run from the project root directory
 
-### Step 1 — Compile
+### Step 1 — Build
+
+Gradle downloads all dependencies (including `commons-math3`) automatically from Maven Central.
 
 ```bash
-mkdir -p out
-
-# Core server
-javac -d out Source/*.java
-
-# Service nodes
-javac -cp out -d out Services/Base64/*.java
-javac -cp out -d out Services/NBody/*.java
-javac -cp out -d out Services/Compression/*.java
-javac -cp out -d out Services/ImageToAscii/*.java
-javac -cp out -d out Services/CSVStats/*.java
+./gradlew installDist
 ```
 
-### Step 2 — Start the Server (Terminal 1)
+This compiles all sources and places the app JAR and every dependency JAR into `app/build/install/app/lib/`.
 
+### Step 2 — Start the Server (Terminal 1)
 ```bash
-java -cp out -Dfrontend.dir=Frontend Source.Server
+java -cp "app/build/install/app/lib/*" -Dfrontend.dir=app/src/main/java/Frontend Source.Server
 ```
 
 The frontend is now accessible at **http://localhost:5050**
@@ -73,19 +66,19 @@ When running locally, pass a unique `-Dservice.port` to each so they don't confl
 
 ```bash
 # Terminal 2
-java -cp out Services.NBody.NBodyNode
+java -cp "app/build/install/app/lib/*" Services.NBody.NBodyNode
 
 # Terminal 3
-java -cp out -Dservice.port=5103 Services.Base64.Base64Node
+java -cp "app/build/install/app/lib/*" -Dservice.port=5103 Services.Base64.Base64Node
 
 # Terminal 4
-java -cp out -Dservice.port=5104 Services.Compression.CompressionNode
+java -cp "app/build/install/app/lib/*" -Dservice.port=5104 Services.Compression.CompressionNode
 
 # Terminal 5
-java -cp out -Dservice.port=5105 Services.CSVStats.CSVStatsNode
+java -cp "app/build/install/app/lib/*" -Dservice.port=5105 Services.CSVStats.CSVStatsNode
 
 # Terminal 6
-java -cp out -Dservice.port=5106 Services.ImageToAscii.ImageToAsciiNode
+java -cp "app/build/install/app/lib/*" -Dservice.port=5106 Services.ImageToAscii.ImageToAsciiNode
 ```
 
 Each node sends a UDP heartbeat to the server every 5 seconds. Once registered, it appears as **Online** on the home page within 10 seconds.
