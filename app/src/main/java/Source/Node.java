@@ -222,10 +222,12 @@ public abstract class Node implements Runnable {
             try {
                 handleRequestStreaming(ps.getInputStream(), out);
             } catch (Throwable e) {
-                // handleRequestStreaming is responsible for its own error responses.
-                // If it throws here, the connection is in an unknown state — just log and close.
-                System.err.printf("[%s] dispatchRequest unhandled error: %s%n",
-                        getService(), e.getMessage());
+                System.err.printf("[%s] dispatchRequest error: %s%n", getService(), e.getMessage());
+                String msg = e.getMessage() != null
+                        ? e.getMessage().replace("\"", "'") : e.getClass().getSimpleName();
+                try {
+                    out.write(("{\"status\":\"error\",\"message\":\"" + msg + "\"}").getBytes());
+                } catch (IOException ignored) {}
             }
             try { out.flush(); } catch (IOException ignored) {}
         } catch (Exception e) {
